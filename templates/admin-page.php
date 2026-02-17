@@ -89,6 +89,10 @@
                 <span class="dashicons dashicons-performance" style="margin-top: 4px;"></span>
                 Run Performance Scan
             </button>
+            <button id="ld-export-perf-pdf" class="button button-secondary button-hero" disabled>
+                <span class="dashicons dashicons-pdf" style="margin-top: 4px;"></span>
+                Export PDF Report
+            </button>
         </div>
 
         <div id="ld-perf-progress" style="display:none;">
