@@ -978,61 +978,96 @@ class LD_WP_Auditor {
 
         // 1. Delete expired transients
         $expired_count = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->options}
-             WHERE option_name LIKE '\_transient\_timeout\_%'
-             AND option_value < UNIX_TIMESTAMP()"
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->options}
+                 WHERE option_name LIKE %s
+                 AND option_value < %d",
+                $wpdb->esc_like('_transient_timeout_') . '%',
+                time()
+            )
         );
         if ($expired_count > 0) {
             // Delete the timeout entries and their matching data entries
             $wpdb->query(
-                "DELETE a, b FROM {$wpdb->options} a
-                 INNER JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_transient_timeout_', '_transient_')
-                 WHERE a.option_name LIKE '\_transient\_timeout\_%'
-                 AND a.option_value < UNIX_TIMESTAMP()"
+                $wpdb->prepare(
+                    "DELETE a, b FROM {$wpdb->options} a
+                     INNER JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_transient_timeout_', '_transient_')
+                     WHERE a.option_name LIKE %s
+                     AND a.option_value < %d",
+                    $wpdb->esc_like('_transient_timeout_') . '%',
+                    time()
+                )
             );
             // Also handle site transients
             $wpdb->query(
-                "DELETE a, b FROM {$wpdb->options} a
-                 INNER JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_site_transient_timeout_', '_site_transient_')
-                 WHERE a.option_name LIKE '\_site\_transient\_timeout\_%'
-                 AND a.option_value < UNIX_TIMESTAMP()"
+                $wpdb->prepare(
+                    "DELETE a, b FROM {$wpdb->options} a
+                     INNER JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_site_transient_timeout_', '_site_transient_')
+                     WHERE a.option_name LIKE %s
+                     AND a.option_value < %d",
+                    $wpdb->esc_like('_site_transient_timeout_') . '%',
+                    time()
+                )
             );
         }
         $results['expired_transients'] = $expired_count;
 
         // 2. Delete post revisions
         $revision_count = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'revision'"
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = %s",
+                'revision'
+            )
         );
         if ($revision_count > 0) {
             // Delete revision meta first, then revisions
             $wpdb->query(
-                "DELETE pm FROM {$wpdb->postmeta} pm
-                 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-                 WHERE p.post_type = 'revision'"
+                $wpdb->prepare(
+                    "DELETE pm FROM {$wpdb->postmeta} pm
+                     INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                     WHERE p.post_type = %s",
+                    'revision'
+                )
             );
             $wpdb->query(
-                "DELETE FROM {$wpdb->posts} WHERE post_type = 'revision'"
+                $wpdb->prepare(
+                    "DELETE FROM {$wpdb->posts} WHERE post_type = %s",
+                    'revision'
+                )
             );
         }
         $results['revisions'] = $revision_count;
 
         // 3. Empty trash and auto-drafts
         $trash_count = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = 'trash'"
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = %s",
+                'trash'
+            )
         );
         $autodraft_count = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = 'auto-draft'"
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = %s",
+                'auto-draft'
+            )
         );
         if ($trash_count > 0 || $autodraft_count > 0) {
             // Delete associated meta first
             $wpdb->query(
-                "DELETE pm FROM {$wpdb->postmeta} pm
-                 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-                 WHERE p.post_status IN ('trash', 'auto-draft')"
+                $wpdb->prepare(
+                    "DELETE pm FROM {$wpdb->postmeta} pm
+                     INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                     WHERE p.post_status IN (%s, %s)",
+                    'trash',
+                    'auto-draft'
+                )
             );
             $wpdb->query(
-                "DELETE FROM {$wpdb->posts} WHERE post_status IN ('trash', 'auto-draft')"
+                $wpdb->prepare(
+                    "DELETE FROM {$wpdb->posts} WHERE post_status IN (%s, %s)",
+                    'trash',
+                    'auto-draft'
+                )
             );
         }
         $results['trashed'] = $trash_count;
@@ -1071,11 +1106,15 @@ class LD_WP_Auditor {
         ];
 
         $large_options = $wpdb->get_results(
-            "SELECT option_name, LENGTH(option_value) as size
-             FROM {$wpdb->options}
-             WHERE autoload = 'yes'
-             AND LENGTH(option_value) > 102400
-             ORDER BY LENGTH(option_value) DESC",
+            $wpdb->prepare(
+                "SELECT option_name, LENGTH(option_value) as size
+                 FROM {$wpdb->options}
+                 WHERE autoload = %s
+                 AND LENGTH(option_value) > %d
+                 ORDER BY LENGTH(option_value) DESC",
+                'yes',
+                102400
+            ),
             ARRAY_A
         );
 
