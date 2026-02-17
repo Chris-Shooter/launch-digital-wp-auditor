@@ -1,6 +1,8 @@
 (function($) {
     'use strict';
 
+    $(function() {
+
     var scanData = null;
 
     // Run Scan
@@ -606,5 +608,7 @@
         div.appendChild(document.createTextNode(str));
         return div.innerHTML;
     }
+
+    }); // end $(document).ready
 
 })(jQuery);

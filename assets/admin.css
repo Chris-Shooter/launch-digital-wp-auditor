@@ -473,11 +473,11 @@
     border-bottom-color: #38BDF8;
 }
 
-.ld-tab-content {
+.ld-auditor-wrap .ld-tab-content {
     display: none;
 }
 
-.ld-tab-content.active {
+.ld-auditor-wrap .ld-tab-content.active {
     display: block;
 }
 

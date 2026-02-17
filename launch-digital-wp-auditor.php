@@ -1085,6 +1085,7 @@ class LD_WP_Auditor {
             ARRAY_A
         );
 
+        $tables = $tables ?: [];
         $total_size = 0;
         $total_overhead = 0;
         foreach ($tables as $t) {
@@ -1093,7 +1094,7 @@ class LD_WP_Auditor {
         }
 
         return [
-            'tables'         => $tables ?: [],
+            'tables'         => $tables,
             'total_size_mb'  => round($total_size, 2),
             'total_overhead'=> round($total_overhead, 2),
         ];
