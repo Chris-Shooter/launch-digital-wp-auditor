@@ -666,3 +666,53 @@
     font-size: 12px;
     word-break: break-all;
 }
+
+/* ==================== OPTIMIZE RESULTS ==================== */
+.ld-optimize-card {
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-left: 4px solid #10B981;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+}
+
+.ld-optimize-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    font-size: 16px;
+    color: #166534;
+}
+
+.ld-optimize-header .dashicons {
+    color: #10B981;
+    font-size: 22px;
+    width: 22px;
+    height: 22px;
+}
+
+.ld-optimize-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ld-optimize-item {
+    font-size: 14px;
+    color: #334155;
+    padding: 6px 0;
+}
+
+.ld-optimize-count {
+    font-weight: 700;
+    color: #0F172A;
+}
+
+.ld-optimize-hint {
+    margin: 14px 0 0;
+    font-size: 13px;
+    color: #64748B;
+    font-style: italic;
+}

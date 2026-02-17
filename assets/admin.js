@@ -365,6 +365,7 @@
                         $('#ld-perf-progress').fadeOut();
                         $('#ld-perf-results').fadeIn();
                         $('#ld-export-perf-pdf').prop('disabled', false);
+                        $('#ld-optimize').prop('disabled', false);
                     }, 400);
                 } else {
                     alert('Performance scan failed: ' + (response.data || 'Unknown error'));
@@ -427,6 +428,82 @@
             }
         });
     });
+
+    // 1-Click Optimize
+    $('#ld-optimize').on('click', function() {
+        if (!confirm('This will delete post revisions, trash, auto-drafts, expired transients, optimize database tables, and disable autoload on large non-critical options. Continue?')) {
+            return;
+        }
+
+        var $btn = $(this);
+        $btn.prop('disabled', true).text('Optimizing...');
+
+        $.ajax({
+            url: ldAuditor.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'ld_auditor_optimize',
+                nonce: ldAuditor.nonce
+            },
+            timeout: 120000,
+            success: function(response) {
+                if (response.success) {
+                    renderOptimizeResults(response.data);
+                } else {
+                    alert('Optimization failed: ' + (response.data || 'Unknown error'));
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Optimization failed: ' + error);
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-admin-tools" style="margin-top:4px;"></span> Optimize Now');
+            }
+        });
+    });
+
+    function renderOptimizeResults(data) {
+        var total = data.revisions + data.expired_transients + data.trashed + data.autodrafts;
+        var html = '<div class="ld-optimize-card">';
+        html += '<div class="ld-optimize-header">';
+        html += '<span class="dashicons dashicons-yes-alt"></span>';
+        html += '<strong>Optimization Complete</strong>';
+        html += '</div>';
+        html += '<div class="ld-optimize-items">';
+
+        if (data.revisions > 0) {
+            html += optimizeItem(numberFormat(data.revisions), 'post revision' + (data.revisions !== 1 ? 's' : '') + ' deleted');
+        }
+        if (data.expired_transients > 0) {
+            html += optimizeItem(numberFormat(data.expired_transients), 'expired transient' + (data.expired_transients !== 1 ? 's' : '') + ' cleared');
+        }
+        if (data.trashed > 0) {
+            html += optimizeItem(numberFormat(data.trashed), 'trashed post' + (data.trashed !== 1 ? 's' : '') + ' removed');
+        }
+        if (data.autodrafts > 0) {
+            html += optimizeItem(numberFormat(data.autodrafts), 'auto-draft' + (data.autodrafts !== 1 ? 's' : '') + ' removed');
+        }
+        if (data.optimized_tables > 0) {
+            html += optimizeItem(data.optimized_tables, 'database table' + (data.optimized_tables !== 1 ? 's' : '') + ' optimized');
+        }
+        if (data.autoload_disabled > 0) {
+            html += optimizeItem(data.autoload_disabled, 'large option' + (data.autoload_disabled !== 1 ? 's' : '') + ' removed from autoload (' + escHtml(data.autoload_freed_formatted) + ' freed)');
+        }
+
+        if (total === 0 && data.optimized_tables === 0 && data.autoload_disabled === 0) {
+            html += '<div class="ld-optimize-item">Nothing to clean up — your site is already optimized.</div>';
+        }
+
+        html += '</div>';
+        html += '<p class="ld-optimize-hint">Run the performance scan again to see your updated score.</p>';
+        html += '</div>';
+
+        $('#ld-optimize-results').html(html).hide().fadeIn();
+    }
+
+    function optimizeItem(count, label) {
+        return '<div class="ld-optimize-item"><span class="ld-optimize-count">' + count + '</span> ' + label + '</div>';
+    }
 
     function renderPerfResults(data) {
         renderPerfSummary(data);

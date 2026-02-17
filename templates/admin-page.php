@@ -93,6 +93,10 @@
                 <span class="dashicons dashicons-pdf" style="margin-top: 4px;"></span>
                 Export PDF Report
             </button>
+            <button id="ld-optimize" class="button button-secondary button-hero" disabled>
+                <span class="dashicons dashicons-admin-tools" style="margin-top: 4px;"></span>
+                Optimize Now
+            </button>
         </div>
 
         <div id="ld-perf-progress" style="display:none;">
@@ -103,6 +107,7 @@
         </div>
 
         <div id="ld-perf-results" style="display:none;">
+            <div id="ld-optimize-results"></div>
             <div class="ld-summary-grid" id="ld-perf-summary"></div>
             <div id="ld-perf-issues"></div>
             <div class="ld-perf-section" id="ld-perf-php"></div>

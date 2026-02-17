@@ -37,6 +37,7 @@ class LD_WP_Auditor {
         add_action('wp_ajax_ld_auditor_export_report', [$this, 'ajax_export_report']);
         add_action('wp_ajax_ld_auditor_run_perf_scan', [$this, 'ajax_run_perf_scan']);
         add_action('wp_ajax_ld_auditor_export_perf_report', [$this, 'ajax_export_perf_report']);
+        add_action('wp_ajax_ld_auditor_optimize', [$this, 'ajax_optimize']);
     }
 
     /**
@@ -961,6 +962,175 @@ class LD_WP_Auditor {
         ob_start();
         include LD_AUDITOR_PATH . 'templates/perf-report.php';
         return ob_get_clean();
+    }
+
+    /**
+     * AJAX: 1-click optimize — run safe cleanup operations
+     */
+    public function ajax_optimize() {
+        check_ajax_referer('ld_auditor_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        global $wpdb;
+        $results = [];
+
+        // 1. Delete expired transients
+        $expired_count = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->options}
+             WHERE option_name LIKE '\_transient\_timeout\_%'
+             AND option_value < UNIX_TIMESTAMP()"
+        );
+        if ($expired_count > 0) {
+            // Delete the timeout entries and their matching data entries
+            $wpdb->query(
+                "DELETE a, b FROM {$wpdb->options} a
+                 INNER JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_transient_timeout_', '_transient_')
+                 WHERE a.option_name LIKE '\_transient\_timeout\_%'
+                 AND a.option_value < UNIX_TIMESTAMP()"
+            );
+            // Also handle site transients
+            $wpdb->query(
+                "DELETE a, b FROM {$wpdb->options} a
+                 INNER JOIN {$wpdb->options} b ON b.option_name = REPLACE(a.option_name, '_site_transient_timeout_', '_site_transient_')
+                 WHERE a.option_name LIKE '\_site\_transient\_timeout\_%'
+                 AND a.option_value < UNIX_TIMESTAMP()"
+            );
+        }
+        $results['expired_transients'] = $expired_count;
+
+        // 2. Delete post revisions
+        $revision_count = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'revision'"
+        );
+        if ($revision_count > 0) {
+            // Delete revision meta first, then revisions
+            $wpdb->query(
+                "DELETE pm FROM {$wpdb->postmeta} pm
+                 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                 WHERE p.post_type = 'revision'"
+            );
+            $wpdb->query(
+                "DELETE FROM {$wpdb->posts} WHERE post_type = 'revision'"
+            );
+        }
+        $results['revisions'] = $revision_count;
+
+        // 3. Empty trash and auto-drafts
+        $trash_count = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = 'trash'"
+        );
+        $autodraft_count = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = 'auto-draft'"
+        );
+        if ($trash_count > 0 || $autodraft_count > 0) {
+            // Delete associated meta first
+            $wpdb->query(
+                "DELETE pm FROM {$wpdb->postmeta} pm
+                 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+                 WHERE p.post_status IN ('trash', 'auto-draft')"
+            );
+            $wpdb->query(
+                "DELETE FROM {$wpdb->posts} WHERE post_status IN ('trash', 'auto-draft')"
+            );
+        }
+        $results['trashed'] = $trash_count;
+        $results['autodrafts'] = $autodraft_count;
+
+        // 4. Optimize database tables with overhead
+        $tables_with_overhead = $wpdb->get_col(
+            "SELECT table_name FROM information_schema.TABLES
+             WHERE table_schema = DATABASE()
+             AND data_free > 1048576"
+        );
+        $optimized_tables = 0;
+        foreach ($tables_with_overhead as $table) {
+            // Sanitize table name — only allow alphanumeric and underscores
+            if (preg_match('/^[a-zA-Z0-9_]+$/', $table)) {
+                $wpdb->query("OPTIMIZE TABLE `{$table}`");
+                $optimized_tables++;
+            }
+        }
+        $results['optimized_tables'] = $optimized_tables;
+
+        // 5. Disable autoload on large options (>100KB) that are safe to change
+        // These are typically plugin caches, serialized blobs, or transient-like data
+        $safe_to_disable = [
+            '%_cache%', '%_transient%', '%_log%', '%_session%',
+            '%_stats%', '%_report%', '%_backup%', '%_export%',
+            '%_sitemap%', '%rewrite_rules%', '%auto_updater%',
+        ];
+
+        // Core options that must stay autoloaded
+        $protected_options = [
+            'siteurl', 'home', 'blogname', 'blogdescription',
+            'active_plugins', 'current_theme', 'stylesheet', 'template',
+            'db_version', 'wp_user_roles', 'widget_%', 'sidebars_widgets',
+            'cron', 'rewrite_rules', 'theme_mods_%',
+        ];
+
+        $large_options = $wpdb->get_results(
+            "SELECT option_name, LENGTH(option_value) as size
+             FROM {$wpdb->options}
+             WHERE autoload = 'yes'
+             AND LENGTH(option_value) > 102400
+             ORDER BY LENGTH(option_value) DESC",
+            ARRAY_A
+        );
+
+        $autoload_disabled = 0;
+        $autoload_freed = 0;
+        foreach ($large_options as $opt) {
+            $name = $opt['option_name'];
+
+            // Skip protected core options
+            $is_protected = false;
+            foreach ($protected_options as $pattern) {
+                if (strpos($pattern, '%') !== false) {
+                    $like = str_replace('%', '', $pattern);
+                    if (strpos($name, $like) !== false) {
+                        $is_protected = true;
+                        break;
+                    }
+                } elseif ($name === $pattern) {
+                    $is_protected = true;
+                    break;
+                }
+            }
+            if ($is_protected) {
+                continue;
+            }
+
+            // Check if it matches known safe patterns, or if it's over 500KB (likely a cache blob)
+            $is_safe = $opt['size'] > 524288; // 500KB+ is almost certainly a cache
+            if (!$is_safe) {
+                foreach ($safe_to_disable as $pattern) {
+                    $like = str_replace('%', '', $pattern);
+                    if (stripos($name, $like) !== false) {
+                        $is_safe = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($is_safe) {
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE {$wpdb->options} SET autoload = 'no' WHERE option_name = %s",
+                    $name
+                ));
+                $autoload_disabled++;
+                $autoload_freed += (int) $opt['size'];
+            }
+        }
+        $results['autoload_disabled'] = $autoload_disabled;
+        $results['autoload_freed'] = $autoload_freed;
+        $results['autoload_freed_formatted'] = $this->format_bytes($autoload_freed);
+
+        // Clear the cached perf scan so a fresh scan reflects improvements
+        delete_transient('ld_auditor_last_perf_scan');
+
+        wp_send_json_success($results);
     }
 
     /**
