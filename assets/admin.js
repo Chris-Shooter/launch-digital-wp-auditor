@@ -364,6 +364,7 @@
                         renderPerfResults(response.data);
                         $('#ld-perf-progress').fadeOut();
                         $('#ld-perf-results').fadeIn();
+                        $('#ld-export-perf-pdf').prop('disabled', false);
                     }, 400);
                 } else {
                     alert('Performance scan failed: ' + (response.data || 'Unknown error'));
@@ -377,6 +378,52 @@
             },
             complete: function() {
                 $btn.prop('disabled', false).html('<span class="dashicons dashicons-performance" style="margin-top:4px;"></span> Run Performance Scan');
+            }
+        });
+    });
+
+    // Export Performance PDF
+    $('#ld-export-perf-pdf').on('click', function() {
+        var $btn = $(this);
+        $btn.prop('disabled', true).text('Generating...');
+
+        $.ajax({
+            url: ldAuditor.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'ld_auditor_export_perf_report',
+                nonce: ldAuditor.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    var printWindow = window.open('', '_blank');
+                    if (printWindow) {
+                        printWindow.document.write(response.data.html);
+                        printWindow.document.close();
+                        printWindow.onload = function() {
+                            printWindow.print();
+                        };
+                    } else {
+                        // Fallback: download as HTML if popup blocked
+                        var blob = new Blob([response.data.html], { type: 'text/html' });
+                        var url = URL.createObjectURL(blob);
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'wp-performance-report-' + new Date().toISOString().split('T')[0] + '.html';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }
+                } else {
+                    alert('Export failed: ' + (response.data || 'Please run a performance scan first.'));
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Export failed: ' + error);
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-pdf" style="margin-top:4px;"></span> Export PDF Report');
             }
         });
     });

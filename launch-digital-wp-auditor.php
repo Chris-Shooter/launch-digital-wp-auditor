@@ -36,6 +36,7 @@ class LD_WP_Auditor {
         add_action('wp_ajax_ld_auditor_run_scan', [$this, 'ajax_run_scan']);
         add_action('wp_ajax_ld_auditor_export_report', [$this, 'ajax_export_report']);
         add_action('wp_ajax_ld_auditor_run_perf_scan', [$this, 'ajax_run_perf_scan']);
+        add_action('wp_ajax_ld_auditor_export_perf_report', [$this, 'ajax_export_perf_report']);
     }
 
     /**
@@ -61,8 +62,10 @@ class LD_WP_Auditor {
         wp_enqueue_style('ld-auditor-admin', LD_AUDITOR_URL . 'assets/admin.css', [], LD_AUDITOR_VERSION);
         wp_enqueue_script('ld-auditor-admin', LD_AUDITOR_URL . 'assets/admin.js', ['jquery'], LD_AUDITOR_VERSION, true);
         wp_localize_script('ld-auditor-admin', 'ldAuditor', [
-            'ajaxUrl' => admin_url('admin-ajax.php'),
-            'nonce'   => wp_create_nonce('ld_auditor_nonce'),
+            'ajaxUrl'  => admin_url('admin-ajax.php'),
+            'nonce'    => wp_create_nonce('ld_auditor_nonce'),
+            'siteUrl'  => get_site_url(),
+            'siteName' => get_bloginfo('name'),
         ]);
     }
 
@@ -908,6 +911,8 @@ class LD_WP_Auditor {
         }
 
         $results = [
+            'site_url'        => get_site_url(),
+            'site_name'       => get_bloginfo('name'),
             'scan_date'       => current_time('Y-m-d H:i:s'),
             'php_config'      => $this->check_php_config(),
             'wp_options'      => $this->check_wp_options(),
@@ -929,6 +934,33 @@ class LD_WP_Auditor {
 
         set_transient('ld_auditor_last_perf_scan', $results, HOUR_IN_SECONDS);
         wp_send_json_success($results);
+    }
+
+    /**
+     * AJAX: Export performance report as HTML (for PDF printing)
+     */
+    public function ajax_export_perf_report() {
+        check_ajax_referer('ld_auditor_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $results = get_transient('ld_auditor_last_perf_scan');
+        if (!$results) {
+            wp_send_json_error('No performance scan data available. Please run a scan first.');
+        }
+
+        $html = $this->generate_perf_report_html($results);
+        wp_send_json_success(['html' => $html]);
+    }
+
+    /**
+     * Generate branded HTML performance report
+     */
+    private function generate_perf_report_html($results) {
+        ob_start();
+        include LD_AUDITOR_PATH . 'templates/perf-report.php';
+        return ob_get_clean();
     }
 
     /**
