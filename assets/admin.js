@@ -3,116 +3,119 @@
 
     $(function() {
 
-    var scanData = null;
+    var auditData = null;
 
-    // Run Scan
-    $('#ld-run-scan').on('click', function() {
-        var $btn = $(this);
-        $btn.prop('disabled', true).text('Scanning...');
-        $('#ld-scan-progress').show();
-        $('#ld-results').hide();
+    // =========================================================================
+    // START AUDIT (unified)
+    // =========================================================================
+    $('#ld-start-audit, #ld-rerun-audit').on('click', function() {
+        var $btn = $('#ld-start-audit');
+        $btn.prop('disabled', true).text('Auditing...');
+        $('#ld-audit-progress').show();
+        $('#ld-audit-results').hide();
+        $('#ld-before-after').hide();
+        $('#ld-optimize-results').html('');
 
-        // Animate progress bar
-        var $fill = $('.ld-progress-fill');
+        // Reset phases
+        $('.ld-phase').removeClass('active done');
+
+        var $fill = $('#ld-audit-progress .ld-progress-fill');
         $fill.css('width', '0%');
         var progress = 0;
         var interval = setInterval(function() {
-            progress += Math.random() * 15;
+            progress += Math.random() * 8;
             if (progress > 90) progress = 90;
             $fill.css('width', progress + '%');
-        }, 300);
+            if (progress < 35) {
+                $('#ld-phase-plugins').addClass('active');
+            } else if (progress < 70) {
+                $('#ld-phase-plugins').removeClass('active').addClass('done');
+                $('#ld-phase-perf').addClass('active');
+            } else {
+                $('#ld-phase-perf').removeClass('active').addClass('done');
+                $('#ld-phase-analysis').addClass('active');
+            }
+        }, 400);
 
         $.ajax({
             url: ldAuditor.ajaxUrl,
             type: 'POST',
+            timeout: 180000,
             data: {
-                action: 'ld_auditor_run_scan',
+                action: 'ld_auditor_run_audit',
                 nonce: ldAuditor.nonce
             },
             success: function(response) {
                 clearInterval(interval);
                 $fill.css('width', '100%');
+                $('.ld-phase').removeClass('active').addClass('done');
 
                 if (response.success) {
-                    scanData = response.data;
+                    auditData = response.data;
                     setTimeout(function() {
-                        renderResults(scanData);
-                        $('#ld-scan-progress').fadeOut();
-                        $('#ld-results').fadeIn();
-                        $('#ld-export-report').prop('disabled', false);
+                        renderAuditResults(auditData);
+                        $('#ld-audit-progress').fadeOut();
+                        $('#ld-audit-results').fadeIn();
+                        $('#ld-download-pdf').prop('disabled', false);
                     }, 500);
                 } else {
-                    alert('Scan failed: ' + (response.data || 'Unknown error'));
-                    $('#ld-scan-progress').hide();
+                    alert('Audit failed: ' + (response.data || 'Unknown error'));
+                    $('#ld-audit-progress').hide();
                 }
             },
             error: function(xhr, status, error) {
                 clearInterval(interval);
-                alert('Scan failed: ' + error);
-                $('#ld-scan-progress').hide();
+                alert('Audit failed: ' + error);
+                $('#ld-audit-progress').hide();
             },
             complete: function() {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-search" style="margin-top:4px;"></span> Run Full Scan');
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-shield" style="margin-top:4px;"></span> Start Audit');
             }
         });
     });
 
-    // Export Report
-    $('#ld-export-report').on('click', function() {
-        if (!scanData) return;
-
-        var $btn = $(this);
-        $btn.prop('disabled', true).text('Generating...');
-
-        $.ajax({
-            url: ldAuditor.ajaxUrl,
-            type: 'POST',
-            data: {
-                action: 'ld_auditor_export_report',
-                nonce: ldAuditor.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    // Download as HTML file
-                    var blob = new Blob([response.data.html], { type: 'text/html' });
-                    var url = URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'wp-audit-report-' + new Date().toISOString().split('T')[0] + '.html';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                }
-            },
-            complete: function() {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-download" style="margin-top:4px;"></span> Export Report');
-            }
-        });
-    });
-
-    // Render results
-    function renderResults(data) {
-        renderSummary(data);
+    // =========================================================================
+    // MASTER RENDER
+    // =========================================================================
+    function renderAuditResults(data) {
+        renderOverallSummary(data);
+        renderEnvironment(data);
+        renderChecklist(data.checklist);
         renderRedundancies(data.redundancies);
         renderPlugins(data.plugins);
+        renderPerfIssues(data.perf_issues);
+        renderPhpConfig(data.php_config, data.object_cache, data.heartbeat);
+        renderAutoloadTable(data.autoloaded, data.wp_options);
+        renderRevisions(data.post_revisions, data.transients);
+        renderDatabaseTables(data.database_tables);
         renderCronJobs(data.cron_jobs);
+        renderOptimizePreview(data.optimize_preview);
     }
 
-    // Summary cards
-    function renderSummary(data) {
-        var s = data.summary;
-        var healthClass = s.health_score >= 70 ? 'ld-card-health' : (s.health_score >= 40 ? 'ld-card-health fair' : 'ld-card-health poor');
+    // =========================================================================
+    // OVERALL SUMMARY
+    // =========================================================================
+    function renderOverallSummary(data) {
+        var o = data.overall_score;
+        var h = data.health_score;
+        var p = data.perf_score;
+        var overallClass = o >= 70 ? 'ld-card-health' : (o >= 40 ? 'ld-card-health fair' : 'ld-card-health poor');
+        var healthClass = h >= 70 ? 'ld-card-health' : (h >= 40 ? 'ld-card-health fair' : 'ld-card-health poor');
+        var perfClass = p >= 70 ? 'ld-card-health' : (p >= 40 ? 'ld-card-health fair' : 'ld-card-health poor');
+
+        var totalIssues = data.checklist ? data.checklist.length : 0;
 
         var html = '';
-        html += card(s.health_score + '/100', 'Health Score', healthClass);
+        html += '<div class="ld-summary-card ld-card-overall">' +
+            '<div class="ld-card-value ' + overallClass + '">' + o + '<span style="font-size:18px;color:#94A3B8;">/100</span></div>' +
+            '<div class="ld-card-label">Overall Score</div></div>';
+        html += card(h + '/100', 'Plugin Health', healthClass);
+        html += card(p + '/100', 'Performance', perfClass);
         html += card(data.total_plugins, 'Total Plugins', 'ld-card-total');
-        html += card(data.active_count, 'Active', 'ld-card-active');
-        html += card(data.inactive_count, 'Inactive', 'ld-card-inactive');
-        html += card(s.critical_issues + s.high_issues, 'Issues Found', 'ld-card-critical');
-        html += card(s.can_delete, 'Can Remove', 'ld-card-delete');
+        html += card(totalIssues, 'Issues Found', totalIssues > 0 ? 'ld-card-critical' : 'ld-card-health');
+        html += card(data.optimize_preview && data.optimize_preview.has_work ? 'Yes' : 'Clean', 'Can Optimise', data.optimize_preview && data.optimize_preview.has_work ? 'ld-card-delete' : 'ld-card-health');
 
-        $('#ld-summary-cards').html(html);
+        $('#ld-overall-cards').html(html);
     }
 
     function card(value, label, cls) {
@@ -122,7 +125,108 @@
             '</div>';
     }
 
-    // Redundancies
+    // =========================================================================
+    // ENVIRONMENT BENCHMARK
+    // =========================================================================
+    function renderEnvironment(data) {
+        var php = data.php_config;
+        var cache = data.object_cache;
+
+        var phpClass = parseFloat(php.version) >= 8.1 ? 'good' : (parseFloat(php.version) >= 8.0 ? 'warn' : 'bad');
+        var memMb = php.memory_limit_bytes / 1024 / 1024;
+        var memClass = memMb >= 256 ? 'good' : (memMb >= 128 ? 'warn' : 'bad');
+        var dbMb = data.database_tables.total_size_mb;
+        var autoloadMb = (data.wp_options.autoloaded_size / 1024 / 1024).toFixed(1);
+
+        var html = '<h3>Environment Benchmark</h3>';
+        html += '<div class="ld-config-grid">';
+        html += configItem('WordPress', data.wp_version, '');
+        html += configItem('PHP Version', php.version, phpClass);
+        html += configItem('OPcache', php.opcache_enabled ? 'Enabled' : 'Disabled', php.opcache_enabled ? 'good' : 'bad');
+        html += configItem('Object Cache', cache.backend, cache.external_cache ? 'good' : 'warn');
+        html += configItem('Memory Limit', php.memory_limit, memClass);
+        html += configItem('Database Size', dbMb + ' MB', '');
+        html += configItem('Autoloaded Data', autoloadMb + ' MB', parseFloat(autoloadMb) > 1 ? 'warn' : 'good');
+        html += configItem('Active / Inactive', data.active_count + ' / ' + data.inactive_count, '');
+        html += '</div>';
+
+        $('#ld-environment').html(html);
+    }
+
+    function configItem(label, value, cls) {
+        return '<div class="ld-config-item">' +
+            '<div class="ld-detail-label">' + escHtml(label) + '</div>' +
+            '<div class="ld-detail-value ' + (cls || '') + '">' + escHtml(String(value)) + '</div>' +
+            '</div>';
+    }
+
+    // =========================================================================
+    // CHECKLIST
+    // =========================================================================
+    function renderChecklist(items) {
+        if (!items || !items.length) {
+            $('#ld-checklist-section').hide();
+            return;
+        }
+
+        $('#ld-checklist-section').show();
+
+        var html = '';
+        items.forEach(function(item) {
+            var storageKey = 'ld_audit_' + item.id;
+            var isChecked = localStorage.getItem(storageKey) === '1';
+
+            html += '<div class="ld-checklist-item severity-' + item.severity + (isChecked ? ' ld-checked' : '') + '" data-id="' + escHtml(item.id) + '">';
+            html += '<label>';
+            html += '<input type="checkbox" class="ld-check" data-id="' + escHtml(item.id) + '"' + (isChecked ? ' checked' : '') + '>';
+            html += '<span class="ld-check-title">' + escHtml(item.title) + '</span>';
+            html += '<span class="ld-check-severity ld-badge ld-badge-' + item.severity + '">' + item.severity + '</span>';
+            html += '</label>';
+            html += '<div class="ld-check-description">' + escHtml(item.description) + '</div>';
+            if (item.fix) {
+                html += '<div class="ld-check-fix"><strong>Fix:</strong> ' + escHtml(item.fix) + '</div>';
+            }
+            html += '</div>';
+        });
+
+        $('#ld-checklist').html(html);
+        updateChecklistProgress(items);
+    }
+
+    function updateChecklistProgress(items) {
+        if (!items) items = auditData ? auditData.checklist : [];
+        if (!items || !items.length) return;
+
+        var checked = 0;
+        items.forEach(function(item) {
+            if (localStorage.getItem('ld_audit_' + item.id) === '1') checked++;
+        });
+
+        var pct = Math.round((checked / items.length) * 100);
+
+        var html = '<div class="ld-checklist-progress"><div class="ld-checklist-progress-fill" style="width:' + pct + '%;"></div></div>';
+        html += '<div class="ld-checklist-count">' + checked + ' of ' + items.length + ' items addressed</div>';
+        $('#ld-checklist-progress-wrap').html(html);
+    }
+
+    $(document).on('change', '.ld-check', function() {
+        var id = $(this).data('id');
+        var checked = $(this).is(':checked');
+        var storageKey = 'ld_audit_' + id;
+
+        if (checked) {
+            localStorage.setItem(storageKey, '1');
+            $(this).closest('.ld-checklist-item').addClass('ld-checked');
+        } else {
+            localStorage.removeItem(storageKey);
+            $(this).closest('.ld-checklist-item').removeClass('ld-checked');
+        }
+        updateChecklistProgress();
+    });
+
+    // =========================================================================
+    // REDUNDANCIES
+    // =========================================================================
     function renderRedundancies(redundancies) {
         if (!redundancies || !redundancies.length) {
             $('#ld-redundancies').html('');
@@ -139,7 +243,9 @@
         $('#ld-redundancies').html(html);
     }
 
-    // Plugin list
+    // =========================================================================
+    // PLUGINS
+    // =========================================================================
     function renderPlugins(plugins) {
         var html = '';
         plugins.forEach(function(p, i) {
@@ -244,7 +350,7 @@
             if (u.shortcodes_found) {
                 usageText += '<span class="ld-usage-found">Shortcodes found</span>';
                 u.shortcode_details.forEach(function(sc) {
-                    usageText += ' — [' + escHtml(sc.shortcode) + '] in ' + sc.count + ' post(s)';
+                    usageText += ' &mdash; [' + escHtml(sc.shortcode) + '] in ' + sc.count + ' post(s)';
                 });
             }
             if (u.blocks_found) {
@@ -270,37 +376,6 @@
             '</div>';
     }
 
-    // Cron jobs table
-    function renderCronJobs(crons) {
-        if (!crons || !crons.length) {
-            $('#ld-cron-list').html('<p>No scheduled tasks found.</p>');
-            return;
-        }
-
-        // Limit to most relevant / show count
-        var limit = 30;
-        var html = '<table class="ld-cron-table">';
-        html += '<thead><tr><th>Hook</th><th>Schedule</th><th>Interval</th><th>Next Run</th></tr></thead>';
-        html += '<tbody>';
-
-        var shown = crons.slice(0, limit);
-        shown.forEach(function(c) {
-            html += '<tr>';
-            html += '<td><code>' + escHtml(c.hook) + '</code></td>';
-            html += '<td>' + escHtml(c.schedule || 'once') + '</td>';
-            html += '<td>' + (c.interval ? formatInterval(c.interval) : '—') + '</td>';
-            html += '<td>' + escHtml(c.next_run) + '</td>';
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
-
-        if (crons.length > limit) {
-            html += '<p style="color:#64748B;font-size:13px;margin-top:8px;">Showing ' + limit + ' of ' + crons.length + ' scheduled tasks.</p>';
-        }
-
-        $('#ld-cron-list').html(html);
-    }
-
     // Filters
     $(document).on('change', '#ld-filter-status, #ld-filter-risk, #ld-filter-recommendation', function() {
         var statusFilter = $('#ld-filter-status').val();
@@ -320,227 +395,14 @@
     });
 
     // =========================================================================
-    // TABS
+    // PERFORMANCE DETAILS
     // =========================================================================
-    $('.ld-tab').on('click', function() {
-        var tab = $(this).data('tab');
-        $('.ld-tab').removeClass('active');
-        $(this).addClass('active');
-        $('.ld-tab-content').removeClass('active');
-        $('#tab-' + tab).addClass('active');
-    });
-
-    // =========================================================================
-    // PERFORMANCE SCAN
-    // =========================================================================
-    $('#ld-run-perf-scan').on('click', function() {
-        var $btn = $(this);
-        $btn.prop('disabled', true).text('Scanning...');
-        $('#ld-perf-progress').show();
-        $('#ld-perf-results').hide();
-
-        var $fill = $('#ld-perf-progress .ld-progress-fill');
-        $fill.css('width', '0%');
-        var progress = 0;
-        var interval = setInterval(function() {
-            progress += Math.random() * 20;
-            if (progress > 90) progress = 90;
-            $fill.css('width', progress + '%');
-        }, 200);
-
-        $.ajax({
-            url: ldAuditor.ajaxUrl,
-            type: 'POST',
-            data: {
-                action: 'ld_auditor_run_perf_scan',
-                nonce: ldAuditor.nonce
-            },
-            success: function(response) {
-                clearInterval(interval);
-                $fill.css('width', '100%');
-
-                if (response.success) {
-                    setTimeout(function() {
-                        renderPerfResults(response.data);
-                        $('#ld-perf-progress').fadeOut();
-                        $('#ld-perf-results').fadeIn();
-                        $('#ld-export-perf-pdf').prop('disabled', false);
-                        $('#ld-optimize').prop('disabled', false);
-                    }, 400);
-                } else {
-                    alert('Performance scan failed: ' + (response.data || 'Unknown error'));
-                    $('#ld-perf-progress').hide();
-                }
-            },
-            error: function(xhr, status, error) {
-                clearInterval(interval);
-                alert('Performance scan failed: ' + error);
-                $('#ld-perf-progress').hide();
-            },
-            complete: function() {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-performance" style="margin-top:4px;"></span> Run Performance Scan');
-            }
-        });
-    });
-
-    // Export Performance PDF
-    $('#ld-export-perf-pdf').on('click', function() {
-        var $btn = $(this);
-        $btn.prop('disabled', true).text('Generating...');
-
-        $.ajax({
-            url: ldAuditor.ajaxUrl,
-            type: 'POST',
-            data: {
-                action: 'ld_auditor_export_perf_report',
-                nonce: ldAuditor.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    var printWindow = window.open('', '_blank');
-                    if (printWindow) {
-                        printWindow.document.write(response.data.html);
-                        printWindow.document.close();
-                        printWindow.onload = function() {
-                            printWindow.print();
-                        };
-                    } else {
-                        // Fallback: download as HTML if popup blocked
-                        var blob = new Blob([response.data.html], { type: 'text/html' });
-                        var url = URL.createObjectURL(blob);
-                        var a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'wp-performance-report-' + new Date().toISOString().split('T')[0] + '.html';
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                    }
-                } else {
-                    alert('Export failed: ' + (response.data || 'Please run a performance scan first.'));
-                }
-            },
-            error: function(xhr, status, error) {
-                alert('Export failed: ' + error);
-            },
-            complete: function() {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-pdf" style="margin-top:4px;"></span> Export PDF Report');
-            }
-        });
-    });
-
-    // 1-Click Optimize
-    $('#ld-optimize').on('click', function() {
-        if (!confirm('This will delete post revisions, trash, auto-drafts, expired transients, optimize database tables, and disable autoload on large non-critical options. Continue?')) {
-            return;
-        }
-
-        var $btn = $(this);
-        $btn.prop('disabled', true).text('Optimizing...');
-
-        $.ajax({
-            url: ldAuditor.ajaxUrl,
-            type: 'POST',
-            data: {
-                action: 'ld_auditor_optimize',
-                nonce: ldAuditor.nonce
-            },
-            timeout: 120000,
-            success: function(response) {
-                if (response.success) {
-                    renderOptimizeResults(response.data);
-                } else {
-                    alert('Optimization failed: ' + (response.data || 'Unknown error'));
-                }
-            },
-            error: function(xhr, status, error) {
-                alert('Optimization failed: ' + error);
-            },
-            complete: function() {
-                $btn.prop('disabled', false).html('<span class="dashicons dashicons-admin-tools" style="margin-top:4px;"></span> Optimize Now');
-            }
-        });
-    });
-
-    function renderOptimizeResults(data) {
-        var total = data.revisions + data.expired_transients + data.trashed + data.autodrafts;
-        var html = '<div class="ld-optimize-card">';
-        html += '<div class="ld-optimize-header">';
-        html += '<span class="dashicons dashicons-yes-alt"></span>';
-        html += '<strong>Optimization Complete</strong>';
-        html += '</div>';
-        html += '<div class="ld-optimize-items">';
-
-        if (data.revisions > 0) {
-            html += optimizeItem(numberFormat(data.revisions), 'post revision' + (data.revisions !== 1 ? 's' : '') + ' deleted');
-        }
-        if (data.expired_transients > 0) {
-            html += optimizeItem(numberFormat(data.expired_transients), 'expired transient' + (data.expired_transients !== 1 ? 's' : '') + ' cleared');
-        }
-        if (data.trashed > 0) {
-            html += optimizeItem(numberFormat(data.trashed), 'trashed post' + (data.trashed !== 1 ? 's' : '') + ' removed');
-        }
-        if (data.autodrafts > 0) {
-            html += optimizeItem(numberFormat(data.autodrafts), 'auto-draft' + (data.autodrafts !== 1 ? 's' : '') + ' removed');
-        }
-        if (data.optimized_tables > 0) {
-            html += optimizeItem(data.optimized_tables, 'database table' + (data.optimized_tables !== 1 ? 's' : '') + ' optimized');
-        }
-        if (data.autoload_disabled > 0) {
-            html += optimizeItem(data.autoload_disabled, 'large option' + (data.autoload_disabled !== 1 ? 's' : '') + ' removed from autoload (' + escHtml(data.autoload_freed_formatted) + ' freed)');
-        }
-
-        if (total === 0 && data.optimized_tables === 0 && data.autoload_disabled === 0) {
-            html += '<div class="ld-optimize-item">Nothing to clean up — your site is already optimized.</div>';
-        }
-
-        html += '</div>';
-        html += '<p class="ld-optimize-hint">Run the performance scan again to see your updated score.</p>';
-        html += '</div>';
-
-        $('#ld-optimize-results').html(html).hide().fadeIn();
-    }
-
-    function optimizeItem(count, label) {
-        return '<div class="ld-optimize-item"><span class="ld-optimize-count">' + count + '</span> ' + label + '</div>';
-    }
-
-    function renderPerfResults(data) {
-        renderPerfSummary(data);
-        renderPerfIssues(data.perf_issues);
-        renderPhpConfig(data.php_config, data.object_cache, data.heartbeat);
-        renderAutoloadTable(data.autoloaded, data.wp_options);
-        renderRevisions(data.post_revisions, data.transients);
-        renderDatabaseTables(data.database_tables);
-    }
-
-    function renderPerfSummary(data) {
-        var s = data.perf_score;
-        var healthClass = s >= 70 ? 'ld-card-health' : (s >= 40 ? 'ld-card-health fair' : 'ld-card-health poor');
-        var issueCount = data.perf_issues.length;
-        var critCount = data.perf_issues.filter(function(i) { return i.severity === 'critical' || i.severity === 'high'; }).length;
-
-        var autoloadMb = (data.wp_options.autoloaded_size / 1024 / 1024).toFixed(1);
-        var dbMb = data.database_tables.total_size_mb;
-
-        var html = '';
-        html += card(s + '/100', 'Performance Score', healthClass);
-        html += card(issueCount, 'Issues Found', issueCount > 0 ? 'ld-card-critical' : 'ld-card-health');
-        html += card(critCount, 'Critical/High', critCount > 0 ? 'ld-card-critical' : 'ld-card-health');
-        html += card(autoloadMb + ' MB', 'Autoloaded Data', parseFloat(autoloadMb) > 1 ? 'ld-card-critical' : 'ld-card-health');
-        html += card(numberFormat(data.post_revisions.total_revisions), 'Post Revisions', 'ld-card-total');
-        html += card(dbMb + ' MB', 'Database Size', 'ld-card-total');
-
-        $('#ld-perf-summary').html(html);
-    }
-
     function renderPerfIssues(issues) {
         if (!issues || !issues.length) {
             $('#ld-perf-issues').html('<div class="ld-perf-issue severity-low" style="text-align:center;padding:24px;"><strong style="color:#10B981;">No performance issues detected. Backend looks healthy.</strong></div>');
             return;
         }
 
-        // Sort: critical first
         var order = { 'critical': 0, 'high': 1, 'medium': 2, 'low': 3 };
         issues.sort(function(a, b) { return (order[a.severity] || 4) - (order[b.severity] || 4); });
 
@@ -565,46 +427,26 @@
         var html = '<h3>Server & PHP Configuration</h3>';
         html += '<div class="ld-config-grid">';
 
-        // PHP Version
-        var phpClass = 'good';
-        if (parseFloat(php.version) < 8.0) phpClass = 'bad';
-        else if (parseFloat(php.version) < 8.1) phpClass = 'warn';
+        var phpClass = parseFloat(php.version) >= 8.1 ? 'good' : (parseFloat(php.version) >= 8.0 ? 'warn' : 'bad');
         html += configItem('PHP Version', php.version, phpClass);
 
-        // Memory
         var memMb = php.memory_limit_bytes / 1024 / 1024;
         var memClass = memMb >= 256 ? 'good' : (memMb >= 128 ? 'warn' : 'bad');
         html += configItem('Memory Limit', php.memory_limit, memClass);
 
-        // Max Execution
         var execClass = parseInt(php.max_execution_time) >= 120 ? 'good' : (parseInt(php.max_execution_time) >= 30 ? 'warn' : 'bad');
         html += configItem('Max Execution Time', php.max_execution_time + 's', execClass);
 
-        // OPcache
         html += configItem('OPcache', php.opcache_enabled ? 'Enabled' : 'Disabled', php.opcache_enabled ? 'good' : 'bad');
-
-        // Upload
         html += configItem('Upload Max Size', php.upload_max_size, '');
-
-        // SAPI
         html += configItem('PHP SAPI', php.sapi, '');
-
-        // Object Cache
         html += configItem('Object Cache', cache.backend, cache.external_cache ? 'good' : 'warn');
 
-        // Heartbeat
         var hbStatus = heartbeat.disabled ? 'Disabled' : 'Active (default intervals)';
         html += configItem('Heartbeat API', hbStatus, '');
 
         html += '</div>';
         $('#ld-perf-php').html(html);
-    }
-
-    function configItem(label, value, cls) {
-        return '<div class="ld-config-item">' +
-            '<div class="ld-detail-label">' + escHtml(label) + '</div>' +
-            '<div class="ld-detail-value ' + (cls || '') + '">' + escHtml(String(value)) + '</div>' +
-            '</div>';
     }
 
     function renderAutoloadTable(autoloaded, wpOptions) {
@@ -697,7 +539,257 @@
         $('#ld-perf-database').html(html);
     }
 
-    // Helpers
+    // =========================================================================
+    // CRON JOBS
+    // =========================================================================
+    function renderCronJobs(crons) {
+        if (!crons || !crons.length) {
+            $('#ld-cron-list').html('<p>No scheduled tasks found.</p>');
+            return;
+        }
+
+        var limit = 30;
+        var html = '<table class="ld-cron-table">';
+        html += '<thead><tr><th>Hook</th><th>Schedule</th><th>Interval</th><th>Next Run</th></tr></thead>';
+        html += '<tbody>';
+
+        var shown = crons.slice(0, limit);
+        shown.forEach(function(c) {
+            html += '<tr>';
+            html += '<td><code>' + escHtml(c.hook) + '</code></td>';
+            html += '<td>' + escHtml(c.schedule || 'once') + '</td>';
+            html += '<td>' + (c.interval ? formatInterval(c.interval) : '—') + '</td>';
+            html += '<td>' + escHtml(c.next_run) + '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+
+        if (crons.length > limit) {
+            html += '<p style="color:#64748B;font-size:13px;margin-top:8px;">Showing ' + limit + ' of ' + crons.length + ' scheduled tasks.</p>';
+        }
+
+        $('#ld-cron-list').html(html);
+    }
+
+    // =========================================================================
+    // OPTIMIZE PREVIEW
+    // =========================================================================
+    function renderOptimizePreview(preview) {
+        if (!preview) {
+            $('#ld-optimize').prop('disabled', true);
+            return;
+        }
+
+        if (!preview.has_work && (!preview.inactive_plugins || !preview.inactive_plugins.length)) {
+            $('#ld-optimize-preview').html('<p class="ld-optimize-hint">Nothing to optimise — your site is already clean.</p>');
+            $('#ld-optimize').prop('disabled', true);
+            return;
+        }
+
+        var html = '<div class="ld-optimize-preview-card">';
+        html += '<p><strong>The following actions will be performed:</strong></p>';
+        html += '<ul class="ld-optimize-list">';
+
+        if (preview.expired_transients > 0) {
+            html += '<li>' + numberFormat(preview.expired_transients) + ' expired transient' + (preview.expired_transients !== 1 ? 's' : '') + ' will be deleted</li>';
+        }
+        if (preview.revisions > 0) {
+            html += '<li>' + numberFormat(preview.revisions) + ' post revision' + (preview.revisions !== 1 ? 's' : '') + ' will be deleted</li>';
+        }
+        if (preview.trashed > 0) {
+            html += '<li>' + numberFormat(preview.trashed) + ' trashed post' + (preview.trashed !== 1 ? 's' : '') + ' will be removed</li>';
+        }
+        if (preview.autodrafts > 0) {
+            html += '<li>' + numberFormat(preview.autodrafts) + ' auto-draft' + (preview.autodrafts !== 1 ? 's' : '') + ' will be removed</li>';
+        }
+        if (preview.tables_with_overhead > 0) {
+            html += '<li>' + preview.tables_with_overhead + ' database table' + (preview.tables_with_overhead !== 1 ? 's' : '') + ' will be optimised</li>';
+        }
+        if (preview.large_autoload > 0) {
+            html += '<li>' + preview.large_autoload + ' large non-critical option' + (preview.large_autoload !== 1 ? 's' : '') + ' will have autoload disabled</li>';
+        }
+
+        html += '</ul>';
+
+        // Inactive plugin recommendations
+        if (preview.inactive_plugins && preview.inactive_plugins.length > 0) {
+            html += '<p style="margin-top:16px;"><strong>Plugin Cleanup (manual action required):</strong></p>';
+            html += '<ul class="ld-optimize-list">';
+            preview.inactive_plugins.forEach(function(p) {
+                html += '<li>' + escHtml(p.name) + ' — inactive, recommend deletion</li>';
+            });
+            html += '</ul>';
+            html += '<p class="ld-optimize-hint">Inactive plugins must be deleted manually via <a href="' + escHtml(ldAuditor.siteUrl) + '/wp-admin/plugins.php?plugin_status=inactive" target="_blank">Plugins &rarr; Inactive</a>.</p>';
+        }
+
+        html += '</div>';
+
+        $('#ld-optimize-preview').html(html);
+        $('#ld-optimize').prop('disabled', !preview.has_work);
+    }
+
+    // =========================================================================
+    // 1-CLICK OPTIMIZE
+    // =========================================================================
+    $('#ld-optimize').on('click', function() {
+        if (!confirm('This will delete post revisions, trash, auto-drafts, expired transients, optimise database tables, and disable autoload on large non-critical options. A new performance score will be calculated.\n\nContinue?')) {
+            return;
+        }
+
+        var $btn = $(this);
+        $btn.prop('disabled', true).text('Optimising...');
+
+        $.ajax({
+            url: ldAuditor.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'ld_auditor_optimize',
+                nonce: ldAuditor.nonce
+            },
+            timeout: 120000,
+            success: function(response) {
+                if (response.success) {
+                    renderOptimizeResults(response.data);
+                    if (response.data.before_after) {
+                        renderBeforeAfter(response.data.before_after);
+                    }
+                } else {
+                    alert('Optimisation failed: ' + (response.data || 'Unknown error'));
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Optimisation failed: ' + error);
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-admin-tools" style="margin-top:4px;"></span> Optimise Now');
+            }
+        });
+    });
+
+    function renderOptimizeResults(data) {
+        var total = data.revisions + data.expired_transients + data.trashed + data.autodrafts;
+        var html = '<div class="ld-optimize-card">';
+        html += '<div class="ld-optimize-header">';
+        html += '<span class="dashicons dashicons-yes-alt"></span>';
+        html += '<strong>Optimisation Complete</strong>';
+        html += '</div>';
+        html += '<div class="ld-optimize-items">';
+
+        if (data.revisions > 0) {
+            html += optimizeItem(numberFormat(data.revisions), 'post revision' + (data.revisions !== 1 ? 's' : '') + ' deleted');
+        }
+        if (data.expired_transients > 0) {
+            html += optimizeItem(numberFormat(data.expired_transients), 'expired transient' + (data.expired_transients !== 1 ? 's' : '') + ' cleared');
+        }
+        if (data.trashed > 0) {
+            html += optimizeItem(numberFormat(data.trashed), 'trashed post' + (data.trashed !== 1 ? 's' : '') + ' removed');
+        }
+        if (data.autodrafts > 0) {
+            html += optimizeItem(numberFormat(data.autodrafts), 'auto-draft' + (data.autodrafts !== 1 ? 's' : '') + ' removed');
+        }
+        if (data.optimized_tables > 0) {
+            html += optimizeItem(data.optimized_tables, 'database table' + (data.optimized_tables !== 1 ? 's' : '') + ' optimised');
+        }
+        if (data.autoload_disabled > 0) {
+            html += optimizeItem(data.autoload_disabled, 'large option' + (data.autoload_disabled !== 1 ? 's' : '') + ' removed from autoload (' + escHtml(data.autoload_freed_formatted) + ' freed)');
+        }
+
+        if (total === 0 && data.optimized_tables === 0 && data.autoload_disabled === 0) {
+            html += '<div class="ld-optimize-item">Nothing to clean up — your site is already optimised.</div>';
+        }
+
+        html += '</div>';
+        html += '</div>';
+
+        $('#ld-optimize-results').html(html).hide().fadeIn();
+    }
+
+    function optimizeItem(count, label) {
+        return '<div class="ld-optimize-item"><span class="ld-optimize-count">' + count + '</span> ' + label + '</div>';
+    }
+
+    // =========================================================================
+    // BEFORE / AFTER COMPARISON
+    // =========================================================================
+    function renderBeforeAfter(ba) {
+        var html = '<h3>Before / After Comparison</h3>';
+        html += '<div class="ld-before-after-grid">';
+        html += beforeAfterCard('Overall Score', ba.before.overall_score, ba.after.overall_score);
+        html += beforeAfterCard('Plugin Health', ba.before.health_score, ba.after.health_score);
+        html += beforeAfterCard('Performance', ba.before.perf_score, ba.after.perf_score);
+        html += '</div>';
+
+        $('#ld-before-after').html(html).fadeIn();
+        $('html, body').animate({ scrollTop: $('#ld-before-after').offset().top - 50 }, 400);
+    }
+
+    function beforeAfterCard(label, before, after) {
+        var delta = after - before;
+        var deltaClass = delta > 0 ? 'ld-delta-positive' : (delta < 0 ? 'ld-delta-negative' : 'ld-delta-neutral');
+        var deltaSign = delta > 0 ? '+' : '';
+
+        return '<div class="ld-ba-card">' +
+            '<div class="ld-ba-label">' + escHtml(label) + '</div>' +
+            '<div class="ld-ba-scores">' +
+                '<span class="ld-ba-before">' + before + '</span>' +
+                '<span class="ld-ba-arrow">&rarr;</span>' +
+                '<span class="ld-ba-after">' + after + '</span>' +
+            '</div>' +
+            '<div class="ld-ba-delta ' + deltaClass + '">' + deltaSign + delta + ' points</div>' +
+        '</div>';
+    }
+
+    // =========================================================================
+    // DOWNLOAD PDF
+    // =========================================================================
+    $('#ld-download-pdf').on('click', function() {
+        var $btn = $(this);
+        $btn.prop('disabled', true).text('Generating...');
+
+        $.ajax({
+            url: ldAuditor.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'ld_auditor_export_audit_report',
+                nonce: ldAuditor.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    var printWindow = window.open('', '_blank');
+                    if (printWindow) {
+                        printWindow.document.write(response.data.html);
+                        printWindow.document.close();
+                        printWindow.onload = function() {
+                            printWindow.print();
+                        };
+                    } else {
+                        // Fallback: download as HTML if popup blocked
+                        var blob = new Blob([response.data.html], { type: 'text/html' });
+                        var url = URL.createObjectURL(blob);
+                        var a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'wp-audit-report-' + new Date().toISOString().split('T')[0] + '.html';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }
+                } else {
+                    alert('Export failed: ' + (response.data || 'Please run an audit first.'));
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Export failed: ' + error);
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-pdf" style="margin-top:4px;"></span> Download PDF');
+            }
+        });
+    });
+
+    // =========================================================================
+    // HELPERS
+    // =========================================================================
     function getRecType(rec) {
         if (!rec) return 'KEEP';
         var match = rec.match(/^(DELETE|REPLACE|REVIEW|MONITOR|KEEP)/);

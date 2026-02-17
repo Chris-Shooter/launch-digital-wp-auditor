@@ -3,7 +3,7 @@
  * Plugin Name: Launch Digital WP Auditor
  * Plugin URI: https://launchdigital.co.za
  * Description: Comprehensive WordPress plugin audit tool. Scans all installed plugins for performance impact, usage, redundancy, and security risks. Generates branded audit reports.
- * Version: 1.0.0
+ * Version: 2.0.0
  * Author: Launch Digital
  * Author URI: https://launchdigital.co.za
  * License: GPL v2 or later
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('LD_AUDITOR_VERSION', '1.0.0');
+define('LD_AUDITOR_VERSION', '2.0.0');
 define('LD_AUDITOR_PATH', plugin_dir_path(__FILE__));
 define('LD_AUDITOR_URL', plugin_dir_url(__FILE__));
 
@@ -38,6 +38,8 @@ class LD_WP_Auditor {
         add_action('wp_ajax_ld_auditor_run_perf_scan', [$this, 'ajax_run_perf_scan']);
         add_action('wp_ajax_ld_auditor_export_perf_report', [$this, 'ajax_export_perf_report']);
         add_action('wp_ajax_ld_auditor_optimize', [$this, 'ajax_optimize']);
+        add_action('wp_ajax_ld_auditor_run_audit', [$this, 'ajax_run_audit']);
+        add_action('wp_ajax_ld_auditor_export_audit_report', [$this, 'ajax_export_audit_report']);
     }
 
     /**
@@ -899,6 +901,315 @@ class LD_WP_Auditor {
     }
 
     // =========================================================================
+    // UNIFIED AUDIT (V2)
+    // =========================================================================
+
+    /**
+     * AJAX: Run combined plugin + performance audit
+     */
+    public function ajax_run_audit() {
+        check_ajax_referer('ld_auditor_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        // Phase 1: Plugin audit
+        $plugin_results = $this->run_full_scan();
+
+        // Phase 2: Performance audit
+        $perf_results = [
+            'php_config'      => $this->check_php_config(),
+            'wp_options'      => $this->check_wp_options(),
+            'autoloaded'      => $this->check_autoloaded_options(),
+            'post_revisions'  => $this->check_post_revisions(),
+            'transients'      => $this->check_transients(),
+            'database_tables' => $this->check_database_tables(),
+            'object_cache'    => $this->check_object_cache(),
+            'heartbeat'       => $this->check_heartbeat(),
+            'cron_load'       => $this->check_cron_load(),
+        ];
+        $analysis = $this->analyze_performance($perf_results);
+        $perf_results['perf_score']  = $analysis['score'];
+        $perf_results['perf_issues'] = $analysis['issues'];
+
+        // Phase 3: Merge
+        $health_score  = $plugin_results['summary']['health_score'];
+        $perf_score    = $perf_results['perf_score'];
+        $overall_score = $this->calculate_overall_score($health_score, $perf_score);
+
+        $checklist        = $this->build_checklist($plugin_results, $perf_results);
+        $optimize_preview = $this->get_optimize_preview();
+
+        $combined = [
+            'site_url'         => $plugin_results['site_url'],
+            'site_name'        => $plugin_results['site_name'],
+            'wp_version'       => $plugin_results['wp_version'],
+            'php_version'      => $plugin_results['php_version'],
+            'scan_date'        => $plugin_results['scan_date'],
+            'overall_score'    => $overall_score,
+            'health_score'     => $health_score,
+            'perf_score'       => $perf_score,
+            'total_plugins'    => $plugin_results['total_plugins'],
+            'active_count'     => $plugin_results['active_count'],
+            'inactive_count'   => $plugin_results['inactive_count'],
+            'plugins'          => $plugin_results['plugins'],
+            'redundancies'     => $plugin_results['redundancies'],
+            'summary'          => $plugin_results['summary'],
+            'cron_jobs'        => $plugin_results['cron_jobs'],
+            'enqueued_assets'  => $plugin_results['enqueued_assets'],
+            'php_config'       => $perf_results['php_config'],
+            'wp_options'       => $perf_results['wp_options'],
+            'autoloaded'       => $perf_results['autoloaded'],
+            'post_revisions'   => $perf_results['post_revisions'],
+            'transients'       => $perf_results['transients'],
+            'database_tables'  => $perf_results['database_tables'],
+            'object_cache'     => $perf_results['object_cache'],
+            'heartbeat'        => $perf_results['heartbeat'],
+            'cron_load'        => $perf_results['cron_load'],
+            'perf_score'       => $perf_score,
+            'perf_issues'      => $perf_results['perf_issues'],
+            'checklist'        => $checklist,
+            'optimize_preview' => $optimize_preview,
+        ];
+
+        set_transient('ld_auditor_last_audit', $combined, HOUR_IN_SECONDS);
+        wp_send_json_success($combined);
+    }
+
+    /**
+     * AJAX: Export combined audit report as HTML (for print-to-PDF)
+     */
+    public function ajax_export_audit_report() {
+        check_ajax_referer('ld_auditor_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Unauthorized');
+        }
+
+        $results = get_transient('ld_auditor_last_audit');
+        if (!$results) {
+            wp_send_json_error('No audit data available. Please run an audit first.');
+        }
+
+        $html = $this->generate_audit_report_html($results);
+        wp_send_json_success(['html' => $html]);
+    }
+
+    /**
+     * Generate combined audit report HTML
+     */
+    private function generate_audit_report_html($results) {
+        ob_start();
+        include LD_AUDITOR_PATH . 'templates/audit-report.php';
+        return ob_get_clean();
+    }
+
+    /**
+     * Calculate overall score from plugin health + performance
+     * Weighted 45% health / 55% performance
+     */
+    private function calculate_overall_score($health_score, $perf_score) {
+        return max(0, min(100, round(($health_score * 0.45) + ($perf_score * 0.55))));
+    }
+
+    /**
+     * Build a unified checklist of actionable items from both scans
+     */
+    private function build_checklist($plugin_results, $perf_results) {
+        $items = [];
+        $id = 0;
+
+        // From plugin issues
+        foreach ($plugin_results['plugins'] as $p) {
+            foreach ($p['issues'] as $issue) {
+                $items[] = [
+                    'id'          => 'plugin_' . (++$id),
+                    'category'    => 'Plugins',
+                    'severity'    => $issue['severity'],
+                    'title'       => $p['name'] . ': ' . ucfirst(str_replace('_', ' ', $issue['type'])),
+                    'description' => $issue['message'],
+                    'fix'         => $p['recommendation'],
+                ];
+            }
+        }
+
+        // From redundancies
+        foreach ($plugin_results['redundancies'] as $r) {
+            $items[] = [
+                'id'          => 'redundancy_' . (++$id),
+                'category'    => 'Plugins',
+                'severity'    => 'high',
+                'title'       => 'Redundant ' . strtoupper($r['category']) . ' plugins',
+                'description' => $r['message'],
+                'fix'         => 'Keep one, deactivate and delete the rest.',
+            ];
+        }
+
+        // From performance issues
+        foreach ($perf_results['perf_issues'] as $issue) {
+            $items[] = [
+                'id'          => 'perf_' . (++$id),
+                'category'    => $issue['category'],
+                'severity'    => $issue['severity'],
+                'title'       => $issue['title'],
+                'description' => $issue['message'],
+                'fix'         => isset($issue['fix']) ? $issue['fix'] : '',
+            ];
+        }
+
+        // Sort by severity: critical first
+        $order = ['critical' => 0, 'high' => 1, 'medium' => 2, 'low' => 3];
+        usort($items, function ($a, $b) use ($order) {
+            return ($order[$a['severity']] ?? 4) - ($order[$b['severity']] ?? 4);
+        });
+
+        return $items;
+    }
+
+    /**
+     * Get preview of what 1-click optimize will do (counts only, no changes)
+     */
+    private function get_optimize_preview() {
+        global $wpdb;
+
+        $expired_transients = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->options}
+                 WHERE option_name LIKE %s AND option_value < %d",
+                $wpdb->esc_like('_transient_timeout_') . '%',
+                time()
+            )
+        );
+
+        $revisions = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = %s",
+                'revision'
+            )
+        );
+
+        $trashed = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = %s",
+                'trash'
+            )
+        );
+
+        $autodrafts = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_status = %s",
+                'auto-draft'
+            )
+        );
+
+        $tables_with_overhead = count($wpdb->get_col(
+            "SELECT table_name FROM information_schema.TABLES
+             WHERE table_schema = DATABASE() AND data_free > 1048576"
+        ) ?: []);
+
+        $large_autoload = count($this->get_large_autoload_candidates());
+
+        // List inactive plugins for recommendations
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $all_plugins = get_plugins();
+        $active = get_option('active_plugins', []);
+        $inactive_plugins = [];
+        foreach ($all_plugins as $file => $data) {
+            if (!in_array($file, $active)) {
+                $inactive_plugins[] = [
+                    'name' => $data['Name'],
+                    'file' => $file,
+                ];
+            }
+        }
+
+        return [
+            'expired_transients'   => $expired_transients,
+            'revisions'            => $revisions,
+            'trashed'              => $trashed,
+            'autodrafts'           => $autodrafts,
+            'tables_with_overhead' => $tables_with_overhead,
+            'large_autoload'       => $large_autoload,
+            'inactive_plugins'     => $inactive_plugins,
+            'has_work'             => ($expired_transients + $revisions + $trashed + $autodrafts + $tables_with_overhead + $large_autoload) > 0,
+        ];
+    }
+
+    /**
+     * Get list of large autoloaded options that are safe to disable
+     * Shared between optimize preview and actual optimize
+     */
+    private function get_large_autoload_candidates() {
+        global $wpdb;
+
+        $safe_to_disable = [
+            '%_cache%', '%_transient%', '%_log%', '%_session%',
+            '%_stats%', '%_report%', '%_backup%', '%_export%',
+            '%_sitemap%', '%rewrite_rules%', '%auto_updater%',
+        ];
+
+        $protected_options = [
+            'siteurl', 'home', 'blogname', 'blogdescription',
+            'active_plugins', 'current_theme', 'stylesheet', 'template',
+            'db_version', 'wp_user_roles', 'widget_%', 'sidebars_widgets',
+            'cron', 'rewrite_rules', 'theme_mods_%',
+        ];
+
+        $large_options = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT option_name, LENGTH(option_value) as size
+                 FROM {$wpdb->options}
+                 WHERE autoload = %s
+                 AND LENGTH(option_value) > %d
+                 ORDER BY LENGTH(option_value) DESC",
+                'yes',
+                102400
+            ),
+            ARRAY_A
+        );
+
+        $candidates = [];
+        foreach ($large_options ?: [] as $opt) {
+            $name = $opt['option_name'];
+
+            $is_protected = false;
+            foreach ($protected_options as $pattern) {
+                if (strpos($pattern, '%') !== false) {
+                    $like = str_replace('%', '', $pattern);
+                    if (strpos($name, $like) !== false) {
+                        $is_protected = true;
+                        break;
+                    }
+                } elseif ($name === $pattern) {
+                    $is_protected = true;
+                    break;
+                }
+            }
+            if ($is_protected) {
+                continue;
+            }
+
+            $is_safe = $opt['size'] > 524288;
+            if (!$is_safe) {
+                foreach ($safe_to_disable as $pattern) {
+                    $like = str_replace('%', '', $pattern);
+                    if (stripos($name, $like) !== false) {
+                        $is_safe = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($is_safe) {
+                $candidates[] = $opt;
+            }
+        }
+
+        return $candidates;
+    }
+
+    // =========================================================================
     // BACKEND PERFORMANCE PROFILER
     // =========================================================================
 
@@ -975,6 +1286,17 @@ class LD_WP_Auditor {
 
         global $wpdb;
         $results = [];
+
+        // Capture before scores for comparison
+        $cached_audit = get_transient('ld_auditor_last_audit');
+        $before_scores = null;
+        if ($cached_audit) {
+            $before_scores = [
+                'overall_score' => $cached_audit['overall_score'],
+                'health_score'  => $cached_audit['health_score'],
+                'perf_score'    => $cached_audit['perf_score'],
+            ];
+        }
 
         // 1. Delete expired transients
         $expired_count = (int) $wpdb->get_var(
@@ -1089,85 +1411,59 @@ class LD_WP_Auditor {
         }
         $results['optimized_tables'] = $optimized_tables;
 
-        // 5. Disable autoload on large options (>100KB) that are safe to change
-        // These are typically plugin caches, serialized blobs, or transient-like data
-        $safe_to_disable = [
-            '%_cache%', '%_transient%', '%_log%', '%_session%',
-            '%_stats%', '%_report%', '%_backup%', '%_export%',
-            '%_sitemap%', '%rewrite_rules%', '%auto_updater%',
-        ];
-
-        // Core options that must stay autoloaded
-        $protected_options = [
-            'siteurl', 'home', 'blogname', 'blogdescription',
-            'active_plugins', 'current_theme', 'stylesheet', 'template',
-            'db_version', 'wp_user_roles', 'widget_%', 'sidebars_widgets',
-            'cron', 'rewrite_rules', 'theme_mods_%',
-        ];
-
-        $large_options = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT option_name, LENGTH(option_value) as size
-                 FROM {$wpdb->options}
-                 WHERE autoload = %s
-                 AND LENGTH(option_value) > %d
-                 ORDER BY LENGTH(option_value) DESC",
-                'yes',
-                102400
-            ),
-            ARRAY_A
-        );
-
+        // 5. Disable autoload on large options using shared helper
+        $candidates = $this->get_large_autoload_candidates();
         $autoload_disabled = 0;
         $autoload_freed = 0;
-        foreach ($large_options as $opt) {
-            $name = $opt['option_name'];
-
-            // Skip protected core options
-            $is_protected = false;
-            foreach ($protected_options as $pattern) {
-                if (strpos($pattern, '%') !== false) {
-                    $like = str_replace('%', '', $pattern);
-                    if (strpos($name, $like) !== false) {
-                        $is_protected = true;
-                        break;
-                    }
-                } elseif ($name === $pattern) {
-                    $is_protected = true;
-                    break;
-                }
-            }
-            if ($is_protected) {
-                continue;
-            }
-
-            // Check if it matches known safe patterns, or if it's over 500KB (likely a cache blob)
-            $is_safe = $opt['size'] > 524288; // 500KB+ is almost certainly a cache
-            if (!$is_safe) {
-                foreach ($safe_to_disable as $pattern) {
-                    $like = str_replace('%', '', $pattern);
-                    if (stripos($name, $like) !== false) {
-                        $is_safe = true;
-                        break;
-                    }
-                }
-            }
-
-            if ($is_safe) {
-                $wpdb->query($wpdb->prepare(
-                    "UPDATE {$wpdb->options} SET autoload = 'no' WHERE option_name = %s",
-                    $name
-                ));
-                $autoload_disabled++;
-                $autoload_freed += (int) $opt['size'];
-            }
+        foreach ($candidates as $opt) {
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->options} SET autoload = 'no' WHERE option_name = %s",
+                $opt['option_name']
+            ));
+            $autoload_disabled++;
+            $autoload_freed += (int) $opt['size'];
         }
         $results['autoload_disabled'] = $autoload_disabled;
         $results['autoload_freed'] = $autoload_freed;
         $results['autoload_freed_formatted'] = $this->format_bytes($autoload_freed);
 
-        // Clear the cached perf scan so a fresh scan reflects improvements
+        // Clear cached scans so fresh data reflects improvements
         delete_transient('ld_auditor_last_perf_scan');
+
+        // Calculate after scores for before/after comparison
+        if ($before_scores) {
+            $after_perf = [
+                'php_config'      => $this->check_php_config(),
+                'wp_options'      => $this->check_wp_options(),
+                'autoloaded'      => $this->check_autoloaded_options(),
+                'post_revisions'  => $this->check_post_revisions(),
+                'transients'      => $this->check_transients(),
+                'database_tables' => $this->check_database_tables(),
+                'object_cache'    => $this->check_object_cache(),
+                'heartbeat'       => $this->check_heartbeat(),
+                'cron_load'       => $this->check_cron_load(),
+            ];
+            $after_analysis = $this->analyze_performance($after_perf);
+            $new_perf_score = $after_analysis['score'];
+            $new_overall = $this->calculate_overall_score($before_scores['health_score'], $new_perf_score);
+
+            $results['before_after'] = [
+                'before' => $before_scores,
+                'after'  => [
+                    'overall_score' => $new_overall,
+                    'health_score'  => $before_scores['health_score'],
+                    'perf_score'    => $new_perf_score,
+                ],
+            ];
+
+            // Update cached audit with new scores
+            if ($cached_audit) {
+                $cached_audit['overall_score'] = $new_overall;
+                $cached_audit['perf_score'] = $new_perf_score;
+                $cached_audit['perf_issues'] = $after_analysis['issues'];
+                set_transient('ld_auditor_last_audit', $cached_audit, HOUR_IN_SECONDS);
+            }
+        }
 
         wp_send_json_success($results);
     }

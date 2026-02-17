@@ -1,4 +1,4 @@
-/* Launch Digital WP Auditor - Admin Styles */
+/* Launch Digital WP Auditor - Admin Styles (v2.0) */
 
 .ld-auditor-wrap {
     max-width: 1200px;
@@ -19,7 +19,8 @@
     gap: 16px;
 }
 
-.ld-auditor-logo h1 {
+.ld-auditor-logo h1,
+.ld-auditor-logo h2 {
     color: #F8FAFC;
     font-size: 22px;
     font-weight: 700;
@@ -76,6 +77,29 @@
     text-align: center;
 }
 
+/* Progress phases */
+.ld-progress-phases {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 12px;
+}
+
+.ld-phase {
+    font-size: 12px;
+    color: #CBD5E1;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.ld-phase.active {
+    color: #38BDF8;
+}
+
+.ld-phase.done {
+    color: #10B981;
+}
+
 /* Summary Grid */
 .ld-summary-grid {
     display: grid;
@@ -106,6 +130,14 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #64748B;
+}
+
+.ld-summary-card.ld-card-overall {
+    grid-column: span 2;
+}
+
+.ld-summary-card.ld-card-overall .ld-card-value {
+    font-size: 56px;
 }
 
 .ld-card-health { color: #10B981; }
@@ -362,10 +394,6 @@
 }
 
 /* Cron Section */
-#ld-cron-section {
-    margin-top: 32px;
-}
-
 #ld-cron-section h2 {
     font-size: 18px;
     color: #0F172A;
@@ -420,65 +448,6 @@
 .ld-usage-none {
     color: #EF4444;
     font-weight: 600;
-}
-
-/* Responsive */
-@media (max-width: 782px) {
-    .ld-summary-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .ld-plugin-main {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    
-    .ld-plugin-badges {
-        margin-top: 8px;
-    }
-    
-    .ld-table-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-}
-
-/* ==================== TABS ==================== */
-.ld-tabs {
-    display: flex;
-    gap: 0;
-    margin-bottom: 24px;
-    border-bottom: 2px solid #E2E8F0;
-}
-
-.ld-tab {
-    padding: 12px 24px;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #64748B;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.ld-tab:hover {
-    color: #0F172A;
-}
-
-.ld-tab.active {
-    color: #0F172A;
-    border-bottom-color: #38BDF8;
-}
-
-.ld-auditor-wrap .ld-tab-content {
-    display: none;
-}
-
-.ld-auditor-wrap .ld-tab-content.active {
-    display: block;
 }
 
 /* ==================== PERFORMANCE PROFILER ==================== */
@@ -667,7 +636,166 @@
     word-break: break-all;
 }
 
-/* ==================== OPTIMIZE RESULTS ==================== */
+/* ==================== CHECKLIST ==================== */
+.ld-checklist-progress {
+    background: #E2E8F0;
+    border-radius: 8px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.ld-checklist-progress-fill {
+    background: linear-gradient(90deg, #10B981, #38BDF8);
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.3s ease;
+}
+
+.ld-checklist-count {
+    font-size: 13px;
+    color: #64748B;
+    margin-bottom: 12px;
+}
+
+.ld-checklist-item {
+    background: #FFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 8px;
+    transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.ld-checklist-item.severity-critical { border-left: 4px solid #EF4444; }
+.ld-checklist-item.severity-high { border-left: 4px solid #F59E0B; }
+.ld-checklist-item.severity-medium { border-left: 4px solid #3B82F6; }
+.ld-checklist-item.severity-low { border-left: 4px solid #10B981; }
+
+.ld-checklist-item.ld-checked {
+    opacity: 0.5;
+    background: #F8FAFC;
+}
+
+.ld-checklist-item.ld-checked .ld-check-title {
+    text-decoration: line-through;
+}
+
+.ld-checklist-item label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    margin-bottom: 8px;
+}
+
+.ld-check-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0F172A;
+    flex: 1;
+}
+
+.ld-check-severity {
+    flex-shrink: 0;
+}
+
+.ld-check-description {
+    font-size: 13px;
+    color: #334155;
+    margin-bottom: 6px;
+    padding-left: 28px;
+}
+
+.ld-check-fix {
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #166534;
+    margin-left: 28px;
+}
+
+/* ==================== BEFORE/AFTER ==================== */
+.ld-before-after-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.ld-ba-card {
+    background: #FFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 24px;
+    text-align: center;
+}
+
+.ld-ba-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748B;
+    margin-bottom: 12px;
+}
+
+.ld-ba-scores {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.ld-ba-before {
+    font-size: 28px;
+    font-weight: 800;
+    color: #94A3B8;
+}
+
+.ld-ba-arrow {
+    color: #CBD5E1;
+}
+
+.ld-ba-after {
+    font-size: 28px;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.ld-ba-delta {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.ld-delta-positive { color: #10B981; }
+.ld-delta-negative { color: #EF4444; }
+.ld-delta-neutral { color: #64748B; }
+
+/* ==================== OPTIMIZE ==================== */
+.ld-optimize-preview-card {
+    background: #FFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+}
+
+.ld-optimize-list {
+    list-style: disc;
+    padding-left: 24px;
+    margin: 8px 0;
+}
+
+.ld-optimize-list li {
+    font-size: 14px;
+    color: #334155;
+    padding: 4px 0;
+}
+
 .ld-optimize-card {
     background: #F0FDF4;
     border: 1px solid #BBF7D0;
@@ -715,4 +843,48 @@
     font-size: 13px;
     color: #64748B;
     font-style: italic;
+}
+
+.ld-optimize-hint a {
+    color: #3B82F6;
+    text-decoration: none;
+}
+
+.ld-optimize-hint a:hover {
+    text-decoration: underline;
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 782px) {
+    .ld-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .ld-summary-card.ld-card-overall {
+        grid-column: span 2;
+    }
+
+    .ld-plugin-main {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .ld-plugin-badges {
+        margin-top: 8px;
+    }
+
+    .ld-table-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .ld-before-after-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .ld-progress-phases {
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+    }
 }
