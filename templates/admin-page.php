@@ -13,43 +13,56 @@
             </svg>
             <div>
                 <h2 style="color:#F8FAFC;font-size:22px;font-weight:700;margin:0;padding:0;letter-spacing:-0.02em;">Launch Digital WP Auditor</h2>
-                <p class="ld-auditor-subtitle">Plugin Health & Performance Audit Tool</p>
+                <p class="ld-auditor-subtitle">Comprehensive WordPress Site Audit Tool</p>
             </div>
         </div>
     </div>
 
-    <!-- Tabs -->
-    <div class="ld-tabs">
-        <button class="ld-tab active" data-tab="plugins">Plugin Audit</button>
-        <button class="ld-tab" data-tab="performance">Backend Performance</button>
+    <!-- Actions -->
+    <div class="ld-auditor-actions">
+        <button id="ld-start-audit" class="button button-primary button-hero">
+            <span class="dashicons dashicons-shield" style="margin-top: 4px;"></span>
+            Start Audit
+        </button>
+        <button id="ld-download-pdf" class="button button-secondary button-hero" disabled>
+            <span class="dashicons dashicons-pdf" style="margin-top: 4px;"></span>
+            Download PDF
+        </button>
     </div>
 
-    <!-- ==================== PLUGIN AUDIT TAB ==================== -->
-    <div class="ld-tab-content active" id="tab-plugins">
+    <!-- Progress -->
+    <div id="ld-audit-progress" style="display:none;">
+        <div class="ld-progress-bar">
+            <div class="ld-progress-fill"></div>
+        </div>
+        <p class="ld-progress-text">Running comprehensive audit...</p>
+        <div class="ld-progress-phases">
+            <span id="ld-phase-plugins" class="ld-phase">Scanning plugins...</span>
+            <span id="ld-phase-perf" class="ld-phase">Checking performance...</span>
+            <span id="ld-phase-analysis" class="ld-phase">Analysing results...</span>
+        </div>
+    </div>
 
-        <div class="ld-auditor-actions">
-            <button id="ld-run-scan" class="button button-primary button-hero">
-                <span class="dashicons dashicons-search" style="margin-top: 4px;"></span>
-                Run Plugin Scan
-            </button>
-            <button id="ld-export-report" class="button button-secondary button-hero" disabled>
-                <span class="dashicons dashicons-download" style="margin-top: 4px;"></span>
-                Export Report
-            </button>
+    <!-- Results -->
+    <div id="ld-audit-results" style="display:none;">
+
+        <!-- Overall Summary -->
+        <div class="ld-summary-grid" id="ld-overall-cards"></div>
+
+        <!-- Environment Benchmark -->
+        <div id="ld-environment" class="ld-perf-section"></div>
+
+        <!-- Recommendations Checklist -->
+        <div id="ld-checklist-section" class="ld-perf-section" style="display:none;">
+            <h3>Recommendations Checklist</h3>
+            <div id="ld-checklist-progress-wrap"></div>
+            <div id="ld-checklist"></div>
         </div>
 
-        <div id="ld-scan-progress" style="display:none;">
-            <div class="ld-progress-bar">
-                <div class="ld-progress-fill"></div>
-            </div>
-            <p class="ld-progress-text">Scanning plugins...</p>
-        </div>
-
-        <div id="ld-results" style="display:none;">
-            <div class="ld-summary-grid" id="ld-summary-cards"></div>
-            <div id="ld-redundancies"></div>
+        <!-- Plugin Health -->
+        <div id="ld-plugin-section">
             <div class="ld-table-header">
-                <h2>Plugin Details</h2>
+                <h2>Plugin Health</h2>
                 <div class="ld-filters">
                     <select id="ld-filter-status">
                         <option value="all">All Plugins</option>
@@ -72,43 +85,46 @@
                     </select>
                 </div>
             </div>
+            <div id="ld-redundancies"></div>
             <div id="ld-plugin-list"></div>
-            <div id="ld-cron-section">
-                <h2>Scheduled Tasks (WP-Cron)</h2>
-                <div id="ld-cron-list"></div>
-            </div>
         </div>
 
-    </div>
-
-    <!-- ==================== PERFORMANCE TAB ==================== -->
-    <div class="ld-tab-content" id="tab-performance">
-
-        <div class="ld-auditor-actions">
-            <button id="ld-run-perf-scan" class="button button-primary button-hero">
-                <span class="dashicons dashicons-performance" style="margin-top: 4px;"></span>
-                Run Performance Scan
-            </button>
-            <button id="ld-export-perf-pdf" class="button button-secondary button-hero" disabled>
-                <span class="dashicons dashicons-pdf" style="margin-top: 4px;"></span>
-                Export PDF Report
-            </button>
-        </div>
-
-        <div id="ld-perf-progress" style="display:none;">
-            <div class="ld-progress-bar">
-                <div class="ld-progress-fill"></div>
-            </div>
-            <p class="ld-progress-text">Analyzing backend performance...</p>
-        </div>
-
-        <div id="ld-perf-results" style="display:none;">
-            <div class="ld-summary-grid" id="ld-perf-summary"></div>
+        <!-- Performance Details -->
+        <div id="ld-perf-details">
+            <h2 style="font-size:18px;color:#0F172A;margin:32px 0 16px;">Performance Details</h2>
             <div id="ld-perf-issues"></div>
             <div class="ld-perf-section" id="ld-perf-php"></div>
             <div class="ld-perf-section" id="ld-perf-autoload"></div>
             <div class="ld-perf-section" id="ld-perf-revisions"></div>
             <div class="ld-perf-section" id="ld-perf-database"></div>
+        </div>
+
+        <!-- Cron Jobs -->
+        <div id="ld-cron-section" style="margin-top:32px;">
+            <h2>Scheduled Tasks (WP-Cron)</h2>
+            <div id="ld-cron-list"></div>
+        </div>
+
+        <!-- 1-Click Optimise -->
+        <div id="ld-optimize-section" class="ld-perf-section" style="margin-top:32px;">
+            <h3>1-Click Optimise</h3>
+            <div id="ld-optimize-preview"></div>
+            <button id="ld-optimize" class="button button-primary button-hero" disabled>
+                <span class="dashicons dashicons-admin-tools" style="margin-top: 4px;"></span>
+                Optimise Now
+            </button>
+            <div id="ld-optimize-results"></div>
+        </div>
+
+        <!-- Before/After -->
+        <div id="ld-before-after" style="display:none;" class="ld-perf-section"></div>
+
+        <!-- Re-Run Audit -->
+        <div style="text-align:center;margin:40px 0 20px;">
+            <button id="ld-rerun-audit" class="button button-primary button-hero">
+                <span class="dashicons dashicons-update" style="margin-top: 4px;"></span>
+                Run Audit Again
+            </button>
         </div>
 
     </div>
